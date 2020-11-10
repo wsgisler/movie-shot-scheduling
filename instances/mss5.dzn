@@ -1,0 +1,15 @@
+NumActors = 3;
+NumScenes = 5;
+NumLocations = 3;
+NumPrecedences = 3;
+
+ActorCost = [18, 1, 7];
+LocationCost = [0, 11, 5];
+SceneDuration = [5, 5, 4, 1, 5];
+SceneLocation = [0, 0, 1, 2, 1];
+Presence = [|0, 0, 0, 1, 0
+            |0, 0, 0, 1, 1
+            |1, 1, 1, 1, 0|];
+Precedences = [|1, 0
+               |3, 0
+               |1, 3|];

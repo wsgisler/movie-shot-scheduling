@@ -1,0 +1,16 @@
+venv/
+build/
+__pycache__/
+.vscode/
+*.pyc
+*.csv
+*.lp
+*.so
+*.zip
+*.c
+*.log
+*.clp
+*.ilp
+*.swp
+*.swo
+.DS_Store

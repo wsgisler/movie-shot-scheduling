@@ -71,14 +71,21 @@ cdef class SimulatedAnnealingSolver:
             current_score = neighbor_score
         return next.copy(), current_score
         
-    cpdef pool_solve(self, time_limit, start_temperature_min, start_temperature_max, thread_num = -1):
-        cdef starting_solution, start_solution, sc, random_initial_solution, optimized_schedule, best_solution, f, this_sol
+    cpdef pool_solve(self, time_limit, start_temperature_min, start_temperature_max, thread_num = -1, best_solution_p = 0.5, solution_pool_p = 0.25, folder = './solution/'):
+        cdef starting_solution, start_solution, sc, random_initial_solution, optimized_schedule, best_solution, f, this_sol, f1
         cdef int best_score, score
         cdef list solution_pool, scc, tokens
         cdef set solution_pool_hash
-        cdef float cooling_rate, last_temperature
+        cdef float cooling_rate, last_temperature, rnum
         cdef int number_iterations_per_temperature
         cdef str pret, sss, sol, tok
+        
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            
+        f1 = open(folder+'config'+str(thread_num)+'.txt', 'w')
+        f1.write('start_temperature_min: %i, start_temperature_max: %i, best_solution_p: %f, solution_pool_p: %f'%(start_temperature_min, start_temperature_max, best_solution_p, solution_pool_p))
+        f1.close()
         
         pret = 'Thread '+str(thread_num)+': ' if thread_num >= 0 else ''
         
@@ -89,9 +96,9 @@ cdef class SimulatedAnnealingSolver:
         best_score = 100000000
         while True:
             best_score = 100000000
-            for sol in os.listdir('./solution/'):
+            for sol in os.listdir(folder):
                 if '.mss' in sol:
-                    f = open('./solution/'+sol,'r')
+                    f = open(folder+sol,'r')
                     sss = f.read()
                     sss = sss.replace(' ','')
                     sss = sss.replace('[','')
@@ -116,19 +123,20 @@ cdef class SimulatedAnnealingSolver:
                 cooling_rate = 0.95
                 last_temperature = 0.01
             number_iterations_per_temperature = randint(300, 2000)
+            rnum = random()
             if len(solution_pool) == 0:
                 start_solution = random_initial_solution
-            elif random() < 0.5: # in 50% of cases, we start with the best solution we found
+            elif rnum < best_solution_p: # in 50% of cases, we start with the best solution we found
                 start_solution = best_solution
                 print(pret+'Start with current optimal solution')
-            elif random() < 0.75: # in 25% of cases we start with a random solution from the solution pool
+            elif rnum < best_solution_p + solution_pool_p: # in 25% of cases we start with a random solution from the solution pool
                 start_solution = choice(solution_pool)
                 print(pret+'Start with a previously found solution')
             else:
                 start_solution = random_initial_solution
             optimized_schedule = self.solve(start_solution, start_temperature, last_temperature, cooling_rate, number_iterations_per_temperature, thread_num)
             score = optimized_schedule.compute_cost()
-            optimized_schedule.write('solution/'+str(score)+'-optimized-schedule.mss')
+            optimized_schedule.write(folder+str(score)+'-optimized-schedule.mss')
             if optimized_schedule.get_hash() not in solution_pool_hash:
                 solution_pool.append(optimized_schedule)
                 solution_pool_hash.add(optimized_schedule.get_hash())
@@ -182,9 +190,20 @@ cdef class SimulatedAnnealingSolver:
         print(pret+"Number of improving moves: %d" % total_improvements)
         return best_candidate
         
-    cpdef multi_process_pool_solve(self, num_workers = 8, start_temperature_min = 2, start_temperature_max = 300):
-        cdef list processes
-        processes = [Process(target = self.pool_solve, args = (0, start_temperature_min, start_temperature_max, w)) for w in range(num_workers)]
+    cpdef multi_process_pool_solve(self, num_workers = 8, start_temperature_min = 2, start_temperature_max = 300, best_solution_p = -1, solution_pool_p = -1, shared_folder = True):
+        """
+        This method allows us to start multiple solver threads at once:
+        num_workers: number of threads that are run simultaneously
+        start_temperature_min: each solver thread has the same start_temperature_min
+        start_temperature_max: each solver thread has the same start_temperature_max
+        best_solution_p: if set to -1, the solver threads have their individual, random probability of starting each iteration with the best solution, otherwise, this can be set to a fixed value
+        pool_solution_p: if set to -1, the solver threads have their individual, random probability of starting each iteration with a random solution from the solution pool, otherwise, this can be set to a fixed value
+        shared_folder: by default, all solver threads write solutions to the same folder (./solution/). However, if this parameter is set to false, every thread writes to its own folder (can be useful to test efficiency of parameters)
+        """
+        cdef list processes, best_solution_ps, solution_pool_ps
+        best_solution_ps = [0.3+random()*0.7 if best_solution_p < 0 else best_solution_p for w in range(num_workers)]
+        solution_pool_ps = [(1-best_solution_ps[w])*random() if solution_pool_p < 0 else solution_pool_p for w in range(num_workers)]
+        processes = [Process(target = self.pool_solve, args = (0, start_temperature_min, start_temperature_max, w, best_solution_ps[w], solution_pool_ps[w], './solution/' if shared_folder else './solution'+str(w)+'/')) for w in range(num_workers)]
         for w in range(num_workers):
             processes[w].start()
         for w in range(num_workers):
